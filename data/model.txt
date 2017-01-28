@@ -1,0 +1,13 @@
+<?php
+/**
+ * Created by: MinutePHP Framework
+ */
+namespace App\Model {
+
+    use Minute\Model\ModelEx;
+
+    class {class} extends ModelEx {
+        protected $table      = '{table}';
+        protected $primaryKey = '{pk}';
+    }
+}

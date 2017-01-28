@@ -1,0 +1,14 @@
+/// <reference path="{all}" />
+
+module App {
+    export class {name}Controller {
+        constructor(public $scope:any, public $minute:any, public $ui:any, public $timeout:ng.ITimeoutService,
+                    public gettext:angular.gettext.gettextFunction, public gettextCatalog:angular.gettext.gettextCatalog) {
+
+            gettextCatalog.setCurrentLanguage($scope.session.lang || 'en');
+        }
+    }
+
+    angular.module('{name}App', ['MinuteFramework', 'gettext'])
+        .controller('{name}Controller', ['$scope', '$minute', '$ui', '$timeout', 'gettext', 'gettextCatalog', {name}Controller]);
+}

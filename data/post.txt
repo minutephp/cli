@@ -1,0 +1,3 @@
+        public function {func} (string $_mode, array $_models, RouteEx $_route, array $_parents) {
+            //TODO: do things with $_models
+        }

@@ -1,0 +1,14 @@
+<?php
+/**
+ * Created by: MinutePHP framework
+ */
+namespace App\Controller{namespace} {
+
+    use Minute\Routing\RouteEx;
+    use Minute\View\Helper;
+    use Minute\View\View;
+
+    class {class} {
+
+    }
+}

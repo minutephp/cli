@@ -1,0 +1,9 @@
+<div class="content-wrapper ng-cloak" ng-app="{name}App" ng-controller="{name}Controller as mainCtrl" ng-init="init()" ng-cloak="">
+
+<section class="content debug">
+<!-- var dump start -->
+{dump}
+<!-- var dump end -->
+</section>
+
+</div>

@@ -1,0 +1,6 @@
+angular.module('{name}App', ['MinuteFramework'])
+    .controller('{name}Controller', ['$scope', '$minute', function($scope, $minute) {
+        $scope.init = function() {
+            //TODO create controller code
+        };
+    }]);

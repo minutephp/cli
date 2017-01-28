@@ -1,0 +1,250 @@
+#!/usr/bin/env php
+<?php
+
+namespace Bin {
+
+    use App\Config\BootLoader;
+    use App\Controller\Generic\Page;
+    use Auryn\Injector;
+    use Minute\Generators\ControllerCreator;
+    use Minute\Generators\ModelCreator;
+    use Minute\Log\LoggerEx;
+    use Minute\Readers\RouteSorter;
+    use Minute\Resolver\Resolver;
+    use Minute\Shell\Shell;
+    use Minute\Writers\TemplateWriter;
+    use Minute\Zip\ZipFile;
+
+    set_time_limit(0);
+
+    require_once(realpath(__DIR__ . "/../../../autoload.php"));
+
+    Class MinuteCli {
+        /**
+         * @var ModelCreator
+         */
+        private $modelCreator;
+        /**
+         * @var Resolver
+         */
+        private $resolver;
+        /**
+         * @var LoggerEx
+         */
+        private $logger;
+        /**
+         * @var ControllerCreator
+         */
+        private $controllerCreator;
+        /**
+         * @var RouteSorter
+         */
+        private $routeSorter;
+        /**
+         * @var BootLoader
+         */
+        private $bootLoader;
+        /**
+         * @var ZipFile
+         */
+        private $zipFile;
+        /**
+         * @var Shell
+         */
+        private $shell;
+
+        /**
+         * MinuteCli constructor.
+         *
+         * @param ControllerCreator $controllerCreator
+         * @param ModelCreator $modelCreator
+         * @param Resolver $resolver
+         * @param LoggerEx $logger
+         * @param RouteSorter $routeSorter
+         * @param BootLoader $bootLoader
+         * @param ZipFile $zipFile
+         * @param Shell $shell
+         */
+        public function __construct(ControllerCreator $controllerCreator, ModelCreator $modelCreator, Resolver $resolver, LoggerEx $logger,
+                                    RouteSorter $routeSorter, BootLoader $bootLoader, ZipFile $zipFile, Shell $shell) {
+            $this->controllerCreator = $controllerCreator;
+            $this->modelCreator      = $modelCreator;
+            $this->resolver          = $resolver;
+            $this->logger            = $logger;
+            $this->routeSorter       = $routeSorter;
+            $this->bootLoader        = $bootLoader;
+            $this->zipFile           = $zipFile;
+            $this->shell             = $shell;
+        }
+
+        /**
+         * @param array $args
+         *
+         */
+        function run(array $args) {
+            global $injector;
+            $cmd = $args[0];
+
+            if (($cmd === 'cm') || ($cmd === 'create-models')) {
+                /** @var ModelCreator $modelWriter */
+                $this->modelCreator->write();
+            } elseif (($cmd === 'cc') || ($cmd === 'create-controllers')) {
+                $routes = $this->routeSorter->sortRoutes();
+
+                foreach ($routes as $route) {
+                    if ($controller = $route['controller']) {
+                        if (!$this->resolver->getController($controller)) {
+                            if (!file_exists($route['path'])) {
+                                $this->controllerCreator->newController($route['path'], $route['classPath']);
+                            }
+
+                            if (!is_callable($route['action']) && empty($written[$controller])) {
+                                /** @var TemplateWriter $writer */
+                                $writer = $injector->make(TemplateWriter::class)->setTemplate($route['method'] === 'POST' ? 'post.txt' : 'get.txt');
+                                $func   = $writer->readData(['func' => $route['fn']]);
+                                if ($this->controllerCreator->newFunction($route['path'], $func)) {
+                                    $written[$controller] = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            } elseif (($cmd === 'cv') || ($cmd === 'create-views')) {
+                $routes = $this->routeSorter->sortRoutes();
+
+                foreach ($routes as $route) {
+                    if ($route['method'] === 'GET') {
+                        if (!$route['route']->getDefault('_noView')) {
+                            $routePath = !empty($route['classPath']) ? $route['classPath'] : $route['url'];
+                            $page      = $injector->make(Page::class);
+                            $viewFile  = $page->getViewPath($routePath);
+                            $viewPath  = sprintf('%s/View/%s.php', $route['dir'], $viewFile);
+
+                            if (!file_exists($viewPath) && !preg_match('/generic/i', $viewFile)) {
+                                /** @var TemplateWriter $writer */
+                                $writer = $injector->make(TemplateWriter::class);
+                                $writer->setTemplate('dump.txt');
+
+                                $dump    = '';
+                                $name    = pathinfo($viewPath, PATHINFO_FILENAME);
+                                $parents = $route['route']->parseGetModels();
+
+                                foreach ($parents as $parent => $children) {
+                                    $dump .= sprintf("%s\n", $writer->readData(['var' => $parent]));
+                                }
+
+                                $writer->setTemplate('view.txt');
+
+                                if ($writer->write($viewPath, ['name' => $name, 'dump' => $dump])) {
+                                    foreach (['ts', 'js'] as $type) {
+                                        $script = sprintf('%s/scripts/%s.%s', dirname($viewPath), basename($viewPath, ".php"), $type);
+
+                                        $writer->setTemplate("view-$type.txt");
+                                        $writer->write($script, ['name' => $name, 'all' => strtr($this->bootLoader->getBaseDir() . '/public/static/bower_components/minute/_all.d.ts', '\\', '/')]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } elseif (($cmd === 'cp') || ($cmd === 'create-plugin')) {
+                list($name, $repo, $ns) = @[$args[1], $args[2], 'minutephp'];
+
+                if (!empty($name) && !empty($repo)) {
+                    if (preg_match('~^(.*?)/(.*?)$~', $name, $matches)) {
+                        list($ns, $name) = [$matches[1], $matches[2]];
+                    }
+
+                    if ($repo = realpath($repo)) {
+                        $dest    = sprintf("%s/%s", $repo, $name);
+                        $dataDir = realpath(__DIR__ . "/../data");
+                        $baseDir = $this->bootLoader->getBaseDir();
+
+                        if (true || !realpath($dest)) {
+                            if ($this->zipFile->extract("$dataDir/plugin.zip", $dest)) {
+                                if ($composer = realpath(sprintf("%s/composer.json", $dest))) {
+                                    /** @var TemplateWriter $writer */
+                                    $writer = $injector->make(TemplateWriter::class);
+                                    $writer->setTemplate($composer);
+                                    $writer->write($composer, ['name' => $name, 'namespace' => $ns, 'ucname' => ucfirst($ns)], 'Updating composer.json');
+
+                                    chdir($dest);
+                                    $this->logger->info('Creating VCS');
+                                    $this->shell->run('git init && git add -A && git commit -m "first commit" && git tag -a v0.0.1 -m "v0.0.1 by minutephp"');
+
+                                    chdir($baseDir);
+                                    $this->logger->info('Adding repo to composer.json');
+                                    $this->shell->run('composer config repositories.%s vcs "%s"', $name, strtr($dest, '\\', '/'));
+
+                                    $this->logger->info('Installing plugin');
+                                    $this->shell->run('composer require %s/%s:dev-master -v', $ns, $name, $baseDir);
+
+                                    $this->logger->info('Configuring autoload');
+                                    $this->shell->run('composer dumpautoload -o', $name);
+
+                                    $this->logger->info('Finalizing configuration');
+                                    $this->shell->run('composer config --unset repositories.%s', $name);
+
+                                    $this->logger->info(sprintf('Plugin created and installed successfully: %s', $name));
+                                } else {
+                                    $this->logger->info(sprintf('Unable to find composer.json in %s', $dest));
+                                }
+                            } else {
+                                $this->logger->info(sprintf('Unable to extract plugin.zip to %s', $dest));
+                            }
+                        } else {
+                            $this->logger->info(sprintf('Destination directory "%s" is not empty.', realpath($dest)));
+                        }
+                    } else {
+                        $this->logger->info(sprintf('Repo directory "%s" does not exist.', $repo));
+                    }
+                } else {
+                    $this->logger->info("Failed: Plugin name or repo-dir is missing. Correct usage: minutephp cp helloworld ~/some/path/that/exists");
+                }
+            } elseif ($cmd == 'first-run') {
+                $uname = strtolower(php_uname());
+                $os    = (strpos($uname, "darwin") !== false) ? 'osx' : ((strpos($uname, "win") !== false) ? 'win32' : 'linux');
+                $end   = $os == 'win32' ? '' : '&';
+
+                chdir($this->bootLoader->getBaseDir() . "/public");
+                $port = 8081;
+                $url  = "http://localhost:8081/first-run";
+
+                echo "Starting temporary configuration server...\nPlease open $url in your browser to get started.\n\n";
+
+
+                $cmd1 = sprintf("%s $url $end", $os == 'win32' ? 'start ""' : ($os == 'osx' ? 'open' : 'xdg-open'));
+                $cmd2 = sprintf("%s php -S localhost:$port index.php $end", $os == 'win32' ? 'start ""' : '');
+
+                echo "Executing: $cmd1\n";
+                pclose(popen($cmd1, "r"));
+
+                echo "Executing: $cmd2\n";
+                pclose(popen($cmd2, "r"));
+            } else {
+                printf("\nMinutePHP v1.00\n\n");
+                printf("Usage:\n  minutephp command [options]\n\n");
+                printf("Commands:\n\n");
+
+                printf("1. create-models [or cm]  -  Create Model Classes from Database tables\n");
+                printf("    Example: minutephp create-models [--overwrite]\n\n");
+
+                printf("2. create-controllers [or cc]  -  Create Controller Classes (for all defined routes)\n");
+                printf("    Example: minutephp create-controllers\n\n");
+
+                printf("3. create-views [or cv]  -  Create View Files (for all defined routes)\n");
+                printf("    Example: minutephp cv\n");
+
+                printf("4. create-plugin [or cp] plugin-name repo-dir -  Create a new plugin in repo-dir\n");
+                printf("    Example: minutephp create-plugin supportdesk ~/my/plugins\n");
+                printf("    Note: The create-plugin function modifies your composer.json (to install the new plugin)\n\n");
+            }
+        }
+    }
+
+    global $argv, $injector;
+
+    $injector = new Injector();
+    $cli      = $injector->make(MinuteCli::class);
+    $cli->run(array_slice($argv, 1));
+}

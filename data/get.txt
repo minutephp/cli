@@ -1,0 +1,3 @@
+        public function {func} (RouteEx $_route) {
+            return (new View());
+        }

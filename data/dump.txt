@@ -1,0 +1,6 @@
+<div class="panel panel-default">
+    <div class="panel-heading"><b>{var}</b></div>
+    <div class="panel-body">
+        <pre class="pre-scrollable">{{{var}.dump() | json}}</pre>
+    </div>
+</div>
