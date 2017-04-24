@@ -17,7 +17,10 @@ namespace Bin {
 
     set_time_limit(0);
 
-    require_once(realpath(__DIR__ . "/../../../autoload.php"));
+    $sep = DIRECTORY_SEPARATOR;
+    $dir = preg_match("/(.*)\\Qvendor{$sep}minutephp{$sep}cli{$sep}bin{$sep}minutephp\\E/", $argv[0], $matches) ? $matches[1] . $sep . 'vendor' : __DIR__ . "/../../../";
+    $autoload = realpath("$dir/autoload.php");
+    require_once($autoload);
 
     Class MinuteCli {
         /**
